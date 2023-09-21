@@ -1,15 +1,11 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
-namespace GettingStartedCS
-{
-    class Program
-    {
-        static void Main(string[] args)
-        {
-            // demonstrate parsing
-            SyntaxTree tree = CSharpSyntaxTree.ParseText(@"var x = new DateTime(2016,12,1);");
-            Console.WriteLine(tree.ToString()); // new DateTime(2016,12,1)
-        }
+class Program {
+    static void Main(string[] args) {
+        var stream = args.Length >= 1 ? File.OpenText(args[0]) : Console.In;
+        var code = stream.ReadToEnd();
+        SyntaxTree tree = CSharpSyntaxTree.ParseText(code);
+        new GodotWalker().Visit(tree.GetRoot());
     }
 }
