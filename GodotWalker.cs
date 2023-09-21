@@ -6,18 +6,26 @@ class GodotWalker : CSharpSyntaxWalker
 {
     const string INDENT_STRING = "    ";
     int indent = 0;
-    int consecutive_line_ends = 2;  
+    int consecutive_line_ends = 2;
 
     public GodotWalker() : base(SyntaxWalkerDepth.Trivia)
     {
     }
 
-    void printline(string format, params Object?[]? args) 
+    void print(string format, params Object?[]? args) 
     {
-        Console.Write(GetIndent());
+        if (consecutive_line_ends > 0) {
+            Console.Write(GetIndent());
+        }
         Console.Write(format, args);
-        Console.WriteLine();
         consecutive_line_ends = 0;
+    }
+
+    void newline() {
+        if (consecutive_line_ends < 2) {
+            Console.WriteLine();
+        }
+        consecutive_line_ends++;
     }
 
     private string GetIndent()
@@ -27,9 +35,10 @@ class GodotWalker : CSharpSyntaxWalker
 
     public override void VisitClassDeclaration(ClassDeclarationSyntax node)
     {
-        printline("# class {0} {1}", node.Identifier, node.BaseList);
+        print("# class {0} {1}", node.Identifier, node.BaseList);
         base.VisitClassDeclaration(node);
-        printline("# end of class {0}", node.Identifier);
+        print("# end of class {0}", node.Identifier);
+        newline();
     }
 
     public override void VisitVariableDeclaration(VariableDeclarationSyntax node)
@@ -38,7 +47,7 @@ class GodotWalker : CSharpSyntaxWalker
         typewalker.Visit(node.Type);
         string current_type = typewalker.GetTypeName();
         foreach (var variable in node.Variables) {
-            printline("var {0} : {1}", variable.Identifier, current_type);
+            print("var {0} : {1}", variable.Identifier, current_type);
         }
     }
 
@@ -56,14 +65,15 @@ class GodotWalker : CSharpSyntaxWalker
                 string text = trivia.ToFullString();
                 foreach (var line in text.Split('\n')) {
                     var foo = line.Trim(' ','\t','/', '*');
-                    printline("# {0}", foo);
+                    if (consecutive_line_ends == 0) Console.Write(' ');
+                    print("# {0}", foo);
+                    newline();
                 }
                 break;
             }
 
             case SyntaxKind.EndOfLineTrivia: {
-                consecutive_line_ends++;
-                if (consecutive_line_ends == 2) Console.WriteLine();
+                newline();
                 break;
             }
         }
@@ -77,7 +87,7 @@ class GodotWalker : CSharpSyntaxWalker
             typewalker.Visit(node.ReturnType);
             return_type = " -> " + typewalker.GetTypeName();
         }
-        printline("def {0}{1}{2}:", node.Identifier, node.ParameterList, return_type);
+        print("def {0}{1}{2}:", node.Identifier, node.ParameterList, return_type);
         indent++;
         base.VisitMethodDeclaration(node);
         indent--;
@@ -95,6 +105,9 @@ class GodotTypeWalker : CSharpSyntaxWalker {
         } else {
             type += "." + node.Identifier.Text;
         }
+        switch (type) {
+            case "GameObject": type = "Node"; break;
+        }
     }
 
     public override void VisitPredefinedType(PredefinedTypeSyntax node)
@@ -108,9 +121,6 @@ class GodotTypeWalker : CSharpSyntaxWalker {
     }
 
     public string GetTypeName() {
-        switch (type) {
-            case "GameObject": return "Node";
-            default: return type;
-        }
+        return type;
     }
 }
