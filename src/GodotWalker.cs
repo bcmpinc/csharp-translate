@@ -11,6 +11,8 @@ class GodotWalker : CSharpSyntaxWalker
 
     bool skip_arguments = false;
 
+    bool skip_newlines = false;
+
     public GodotWalker(SyntaxTree tree) : base(SyntaxWalkerDepth.Trivia)
     {
         print("# Converted from '{0}' using csharp-translate", tree.FilePath);
@@ -25,9 +27,12 @@ class GodotWalker : CSharpSyntaxWalker
         }
         Console.Write(format, args);
         consecutive_line_ends = 0;
+        skip_newlines = false;
     }
 
-    void newline() {
+    void newline(bool suppress = false) {
+        if (skip_newlines) return;
+        skip_newlines = suppress;
         if (consecutive_line_ends < 2) {
             Console.WriteLine();
         }
@@ -139,6 +144,7 @@ class GodotWalker : CSharpSyntaxWalker
             print(" -> {0}", typewalker.GetTypeName());
         }
         print(":");
+        newline(true);
 
         // Method body
         indent++;
@@ -177,13 +183,13 @@ class GodotWalker : CSharpSyntaxWalker
         print("if ");
         Visit(node.Condition);
         print(":");
-        newline();
+        newline(true);
         indent++;
         Visit(node.Statement);
         indent--;
         if (node.Else != null) {
             print("else:");
-            newline();
+            newline(true);
             indent++;
             Visit(node.Else.Statement);
             indent--;
@@ -241,6 +247,7 @@ class GodotWalker : CSharpSyntaxWalker
             print(", {0}", offset);
         }
         print("):");
+        newline(true);
         indent++;
         Visit(node.Statement);
         indent--;
@@ -268,7 +275,7 @@ class GodotWalker : CSharpSyntaxWalker
         print("while ");
         Visit(node.Condition);
         print(":");
-        newline();
+        newline(true);
 
         indent++;
         if (node.Statement is EmptyStatementSyntax) {
@@ -341,7 +348,8 @@ class GodotWalker : CSharpSyntaxWalker
                 break;
             default:
                 Visit(node.Expression);
-                print(".{0}", node.Name.Identifier.Text);
+                print(".");
+                Visit(node.Name);
                 break;
         }
     }
