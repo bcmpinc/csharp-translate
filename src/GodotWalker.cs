@@ -126,9 +126,9 @@ class GodotWalker : CSharpSyntaxWalker
             case "Start": print("_ready"); break;
             default: print("{0}", method_name); break;
         }
-        print("(");
 
         // Parameter list
+        print("(");
         var needs_separator = false;
         foreach (var param in node.ParameterList.Parameters) {
             if (needs_separator) Console.Write(", ");
@@ -363,16 +363,21 @@ class GodotWalker : CSharpSyntaxWalker
         if (skip_arguments) {
             skip_arguments = false;
         } else {
-            print("(");
-            var needs_separator = false;
-            foreach (var arg in node.ArgumentList.Arguments) {
-                if (needs_separator) Console.Write(", ");
-                if (arg.NameColon != null) throw new NotSupportedException("Godot does not support named arguments");
-                Visit(arg.Expression);
-                needs_separator = true;
-            }
-            print(")");
+            Visit(node.ArgumentList);
         }
+    }
+
+    public override void VisitArgumentList(ArgumentListSyntax node)
+    {
+        print("(");
+        var needs_separator = false;
+        foreach (var arg in node.Arguments) {
+            if (needs_separator) Console.Write(", ");
+            if (arg.NameColon != null) throw new NotSupportedException("Godot does not support named arguments");
+            Visit(arg.Expression);
+            needs_separator = true;
+        }
+        print(")");
     }
 
     public override void VisitGenericName(GenericNameSyntax node)
@@ -461,6 +466,60 @@ class GodotWalker : CSharpSyntaxWalker
         print("(");
         Visit(node.Expression);
         print(")");
+    }
+
+    public override void VisitObjectCreationExpression(ObjectCreationExpressionSyntax node)
+    {
+        // Type
+        Visit(node.Type);
+
+        // Argument list
+        Visit(node.ArgumentList);
+
+        // Initializers
+        Visit(node.Initializer);
+    }
+
+    public override void VisitArrayCreationExpression(ArrayCreationExpressionSyntax node)
+    {
+        var value = "null";
+        var type = node.Type.ElementType as PredefinedTypeSyntax;
+        var rank = node.Type.RankSpecifiers;
+        if (type != null) {
+            switch(type.Keyword.Text) {
+                case "int":
+                    value = "0"; 
+                    break;
+                case "float":
+                case "double":
+                    value = "0.0";
+                    break;
+            }
+        }
+        int layers = 0;
+        foreach (var dim in rank) {
+            foreach (var size in dim.Sizes) {
+                print("Array(");
+                Visit(size);
+                print(", ");
+                layers++;
+            }
+        }
+        print("{0}{1}", value, new string(')',layers));
+        Visit(node.Initializer);
+    }
+
+    public override void VisitInitializerExpression(InitializerExpressionSyntax node)
+    {
+        newline();
+        print("# Begin initializer");
+        newline();
+        foreach (var expr in node.Expressions) {
+            Visit(expr);
+            newline();
+        }
+        print("# End initializer");
+        newline();
     }
 
     public override void VisitTrivia(SyntaxTrivia trivia)
