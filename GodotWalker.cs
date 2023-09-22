@@ -8,8 +8,11 @@ class GodotWalker : CSharpSyntaxWalker
     int indent = 0;
     int consecutive_line_ends = 2;
 
-    public GodotWalker() : base(SyntaxWalkerDepth.Trivia)
+    public GodotWalker(SyntaxTree tree) : base(SyntaxWalkerDepth.Trivia)
     {
+        print("# Converted from '{0}' using csharp-translate", tree.FilePath);
+        newline();
+        Visit(tree.GetRoot());
     }
 
     void print(string format, params Object?[]? args) 
@@ -35,9 +38,20 @@ class GodotWalker : CSharpSyntaxWalker
 
     public override void VisitClassDeclaration(ClassDeclarationSyntax node)
     {
-        print("# class {0} {1}", node.Identifier, node.BaseList);
-        base.VisitClassDeclaration(node);
+        print("# class_name {0}", node.Identifier);
+        newline();
+        if (node.BaseList != null) {
+            print("# extends: {0}", node.BaseList);
+            newline();
+        }
+        VisitChildren<MemberDeclarationSyntax>(node);
         print("# end of class {0}", node.Identifier);
+        newline();
+    }
+
+    public override void VisitFieldDeclaration(FieldDeclarationSyntax node)
+    {
+        Visit(node.Declaration);
         newline();
     }
 
@@ -48,7 +62,23 @@ class GodotWalker : CSharpSyntaxWalker
         string current_type = typewalker.GetTypeName();
         foreach (var variable in node.Variables) {
             print("var {0} : {1}", variable.Identifier, current_type);
+            if (variable.Initializer != null) {
+                Visit(variable.Initializer);
+            }
         }
+    }
+
+    public override void VisitEqualsValueClause(EqualsValueClauseSyntax node)
+    {
+        print(" = ");
+        Visit(node.Value);
+    }
+
+    public override void VisitLiteralExpression(LiteralExpressionSyntax node)
+    {
+        var text = node.ToFullString();
+        if (text.EndsWith('f') && !text.Contains('.')) text = text.Replace("f",".0");
+        print(text);
     }
 
     public override void VisitTrivia(SyntaxTrivia trivia)
@@ -87,15 +117,44 @@ class GodotWalker : CSharpSyntaxWalker
             typewalker.Visit(node.ReturnType);
             return_type = " -> " + typewalker.GetTypeName();
         }
-        print("def {0}{1}{2}:", node.Identifier, node.ParameterList, return_type);
+        print("func {0}{1}{2}:", node.Identifier, node.ParameterList, return_type);
+        newline();
         indent++;
-        base.VisitMethodDeclaration(node);
+        Visit(node.Body);
         indent--;
+    }
+
+    public override void DefaultVisit(SyntaxNode node)
+    {
+        // If this is called, that means the code contains nodes that are not supported by the converter.
+        print("«{0}»", node.GetType().Name);
+        base.DefaultVisit(node);
+    }
+
+    public override void VisitCompilationUnit(CompilationUnitSyntax node)
+    {
+        print("extends Node");
+        newline();
+        newline();
+        VisitChildren<MemberDeclarationSyntax>(node);
+    }
+
+    private void VisitChildren<NodeType>(SyntaxNode node)
+    {
+        foreach (var child in node.ChildNodesAndTokens()) {
+            if (child.IsToken) {
+                base.VisitToken(child.AsToken());
+            } else {
+                var sub_node = child.AsNode();
+                if (sub_node is NodeType)
+                    base.Visit(sub_node);
+            }
+        }
     }
 }
 
 class GodotTypeWalker : CSharpSyntaxWalker {
-    const string ERROR = "<err>";
+    const string ERROR = "«err»";
     string type = ERROR;
 
     public override void VisitIdentifierName(IdentifierNameSyntax node)
