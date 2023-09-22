@@ -117,7 +117,7 @@ class GodotWalker : CSharpSyntaxWalker
         print("func {0}(", node.Identifier);
         var needs_separator = false;
         foreach (var param in node.ParameterList.Parameters) {
-            if (needs_separator) Console.Write(',');
+            if (needs_separator) Console.Write(", ");
             Visit(param);
             needs_separator = true;
         }
@@ -126,6 +126,17 @@ class GodotWalker : CSharpSyntaxWalker
         indent++;
         Visit(node.Body);
         indent--;
+    }
+
+    public override void VisitParameter(ParameterSyntax node)
+    {
+        print(node.Identifier.Text);
+        if (node.Type != null) {
+            var typewalker = new GodotTypeWalker();
+            typewalker.Visit(node.Type);
+            string current_type = typewalker.GetTypeName();
+            print(" : {0}", current_type);
+        }
     }
 
     public override void VisitTrivia(SyntaxTrivia trivia)
