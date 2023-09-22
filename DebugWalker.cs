@@ -1,6 +1,5 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 class DebugWalker : CSharpSyntaxWalker 
 {
@@ -14,13 +13,9 @@ class DebugWalker : CSharpSyntaxWalker
 
     void printline(string format, params Object?[]? args) 
     {
-        Console.Write(GetIndent());
+        Console.Write(INDENT_STRING.Repeat(indent));
         Console.Write(format, args);
         Console.WriteLine();
-    }
-    private string GetIndent()
-    {
-        return string.Concat(Enumerable.Repeat(INDENT_STRING, indent));
     }
 
     public override void VisitTrivia(SyntaxTrivia trivia)
@@ -34,7 +29,7 @@ class DebugWalker : CSharpSyntaxWalker
             case SyntaxKind.SingleLineDocumentationCommentTrivia:
             case SyntaxKind.MultiLineCommentTrivia:
             case SyntaxKind.MultiLineDocumentationCommentTrivia: {
-                printline("!comment: {0}", trivia.ToFullString().ReplaceLineEndings("\n  " + GetIndent()));
+                printline("Comment: {0}", trivia.ToFullString().ReplaceLineEndings("¬").Truncate(60));
                 break;
             }
 

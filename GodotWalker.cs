@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 class GodotWalker : CSharpSyntaxWalker 
 {
+#region Auxiliary
     const string INDENT_STRING = "    ";
     int indent = 0;
     int consecutive_line_ends = 2;
@@ -18,7 +19,7 @@ class GodotWalker : CSharpSyntaxWalker
     void print(string format, params Object?[]? args) 
     {
         if (consecutive_line_ends > 0) {
-            Console.Write(GetIndent());
+            Console.Write(INDENT_STRING.Repeat(indent));
         }
         Console.Write(format, args);
         consecutive_line_ends = 0;
@@ -31,9 +32,34 @@ class GodotWalker : CSharpSyntaxWalker
         consecutive_line_ends++;
     }
 
-    private string GetIndent()
+    public override void DefaultVisit(SyntaxNode node)
     {
-        return string.Concat(Enumerable.Repeat(INDENT_STRING, indent));
+        // If this is called, that means the code contains nodes that are not supported by the converter.
+        print("«{0}»", node.GetType().Name);
+        newline();
+        // base.DefaultVisit(node);
+    }
+
+    private void VisitChildren<NodeType>(SyntaxNode node)
+    {
+        foreach (var child in node.ChildNodesAndTokens()) {
+            if (child.IsToken) {
+                base.VisitToken(child.AsToken());
+            } else {
+                var sub_node = child.AsNode();
+                if (sub_node is NodeType)
+                    base.Visit(sub_node);
+            }
+        }
+    }
+#endregion Auxiliary
+#region Visitors
+    public override void VisitCompilationUnit(CompilationUnitSyntax node)
+    {
+        print("extends Node");
+        newline();
+        newline();
+        VisitChildren<MemberDeclarationSyntax>(node);
     }
 
     public override void VisitClassDeclaration(ClassDeclarationSyntax node)
@@ -51,8 +77,7 @@ class GodotWalker : CSharpSyntaxWalker
 
     public override void VisitFieldDeclaration(FieldDeclarationSyntax node)
     {
-        Visit(node.Declaration);
-        newline();
+        VisitChildren<VariableDeclarationSyntax>(node);
     }
 
     public override void VisitVariableDeclaration(VariableDeclarationSyntax node)
@@ -79,6 +104,28 @@ class GodotWalker : CSharpSyntaxWalker
         var text = node.ToFullString();
         if (text.EndsWith('f') && !text.Contains('.')) text = text.Replace("f",".0");
         print(text);
+    }
+
+    public override void VisitMethodDeclaration(MethodDeclarationSyntax node)
+    {
+        string return_type = "";
+        if (node.ReturnType.ToString() != "void") {
+            var typewalker = new GodotTypeWalker();
+            typewalker.Visit(node.ReturnType);
+            return_type = " -> " + typewalker.GetTypeName();
+        }
+        print("func {0}(", node.Identifier);
+        var needs_separator = false;
+        foreach (var param in node.ParameterList.Parameters) {
+            if (needs_separator) Console.Write(',');
+            Visit(param);
+            needs_separator = true;
+        }
+        print("){0}:", return_type);
+        newline();
+        indent++;
+        Visit(node.Body);
+        indent--;
     }
 
     public override void VisitTrivia(SyntaxTrivia trivia)
@@ -108,49 +155,7 @@ class GodotWalker : CSharpSyntaxWalker
             }
         }
     }
-
-    public override void VisitMethodDeclaration(MethodDeclarationSyntax node)
-    {
-        string return_type = "";
-        if (node.ReturnType.ToString() != "void") {
-            var typewalker = new GodotTypeWalker();
-            typewalker.Visit(node.ReturnType);
-            return_type = " -> " + typewalker.GetTypeName();
-        }
-        print("func {0}{1}{2}:", node.Identifier, node.ParameterList, return_type);
-        newline();
-        indent++;
-        Visit(node.Body);
-        indent--;
-    }
-
-    public override void DefaultVisit(SyntaxNode node)
-    {
-        // If this is called, that means the code contains nodes that are not supported by the converter.
-        print("«{0}»", node.GetType().Name);
-        base.DefaultVisit(node);
-    }
-
-    public override void VisitCompilationUnit(CompilationUnitSyntax node)
-    {
-        print("extends Node");
-        newline();
-        newline();
-        VisitChildren<MemberDeclarationSyntax>(node);
-    }
-
-    private void VisitChildren<NodeType>(SyntaxNode node)
-    {
-        foreach (var child in node.ChildNodesAndTokens()) {
-            if (child.IsToken) {
-                base.VisitToken(child.AsToken());
-            } else {
-                var sub_node = child.AsNode();
-                if (sub_node is NodeType)
-                    base.Visit(sub_node);
-            }
-        }
-    }
+#endregion Visitors    
 }
 
 class GodotTypeWalker : CSharpSyntaxWalker {
