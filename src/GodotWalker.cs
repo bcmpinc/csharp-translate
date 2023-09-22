@@ -522,6 +522,11 @@ class GodotWalker : CSharpSyntaxWalker
         newline();
     }
 
+    public override void VisitThisExpression(ThisExpressionSyntax node)
+    {
+        print("self");
+    }
+
     public override void VisitTrivia(SyntaxTrivia trivia)
     {
         switch (trivia.Kind()) {
