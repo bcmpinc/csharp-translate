@@ -185,15 +185,74 @@ class GodotWalker : CSharpSyntaxWalker
             print("else:");
             newline();
             indent++;
-            Visit(node.Else);
+            Visit(node.Else.Statement);
             indent--;
         }
+    }
+
+    public bool VisitSimpleForStatement(ForStatementSyntax node) {
+        if (node.Declaration == null) return false;
+        if (node.Declaration.Variables.Count != 1) return false;
+        if (node.Initializers.Count > 0) return false;
+        if (node.Incrementors.Count != 1) return false;
+
+        VariableDeclaratorSyntax variable = node.Declaration.Variables[0];
+        if (variable.Initializer == null) return false;
+        var var_name = variable.Identifier.Text;
+
+        string offset = "1";
+        switch (node.Incrementors[0]) {
+            case PrefixUnaryExpressionSyntax prefix: {
+                if (var_name != (prefix.Operand as IdentifierNameSyntax)?.Identifier.Text) return false;
+                var op = prefix.OperatorToken.Text;
+                offset = op == "++" ? "1" : "-1";
+                break;
+            }
+            case PostfixUnaryExpressionSyntax postfix: {
+                if (var_name != (postfix.Operand as IdentifierNameSyntax)?.Identifier.Text) return false;
+                var op = postfix.OperatorToken.Text;
+                offset = op == "++" ? "1" : "-1";
+                break;
+            }
+            case AssignmentExpressionSyntax binary: {
+                if (var_name != (binary.Left as IdentifierNameSyntax)?.Identifier.Text) return false;
+                var right = binary.Right as LiteralExpressionSyntax;
+                if (right == null) return false;
+                var value = right.Token.Text;
+                if (binary.OperatorToken.Text == "+=") { offset = value; break; }
+                if (binary.OperatorToken.Text == "-=") { offset = "-" + value; break; }
+                return false;
+            }
+            default:
+                return false;
+        }
+
+        var cond = node.Condition as BinaryExpressionSyntax;
+        if (cond == null) return false;
+        if (var_name != (cond.Left as IdentifierNameSyntax)?.Identifier.Text) return false;
+        
+        print("for {0} in range(", var_name);
+        Visit(variable.Initializer.Value);
+        print(", ");
+        Visit(cond.Right);
+        if (cond.OperatorToken.Text == "<=") print(" + 1");
+        if (cond.OperatorToken.Text == ">=") print(" - 1");
+        if (offset != "1") {
+            print(", {0}", offset);
+        }
+        print("):");
+        indent++;
+        Visit(node.Statement);
+        indent--;
+        return true;
     }
 
     public override void VisitForStatement(ForStatementSyntax node)
     {
         // This is a bit tricky as godot does not have a for(;;) syntax.
         // We might be able to recognize simple `for(int i=0; i<10; i++)` loops though and replace these with `for i in range(0,10)`.
+        if (VisitSimpleForStatement(node)) return;
+
         // Otherwise translate to a while loop.
         print("# for");
         newline();
@@ -269,16 +328,22 @@ class GodotWalker : CSharpSyntaxWalker
     public override void VisitAssignmentExpression(AssignmentExpressionSyntax node)
     {
         Visit(node.Left);
-        print(" = ");
+        print(" {0} ", node.OperatorToken.Text);
         Visit(node.Right);
     }
 
     public override void VisitMemberAccessExpression(MemberAccessExpressionSyntax node)
     {
         // TODO: This might need some translation table (e.g. Vector3.zero -> Vector3.ZERO);
-        Visit(node.Expression);
-        print(".");
-        Visit(node.Name);
+        switch(node.Expression.ToFullString()) {
+            case "Mathf":
+                print(node.Name.Identifier.Text.ToLower());
+                break;
+            default:
+                Visit(node.Expression);
+                print(".{0}", node.Name.Identifier.Text);
+                break;
+        }
     }
 
     public override void VisitInvocationExpression(InvocationExpressionSyntax node)
@@ -316,7 +381,79 @@ class GodotWalker : CSharpSyntaxWalker
         }
     }
 
+    public override void VisitBinaryExpression(BinaryExpressionSyntax node)
+    {
+        Visit(node.Left);
+        print(" {0} ", node.OperatorToken.Text);
+        Visit(node.Right);
+    }
 
+    public override void VisitParenthesizedExpression(ParenthesizedExpressionSyntax node)
+    {
+        print("(");
+        Visit(node.Expression);
+        print(")");
+    }
+
+    public override void VisitElementAccessExpression(ElementAccessExpressionSyntax node)
+    {
+        Visit(node.Expression);
+        foreach (var dim in node.ArgumentList.Arguments) {
+            print("[");
+            Visit(dim.Expression);
+            print("]");
+        }
+    }
+
+    public override void VisitPrefixUnaryExpression(PrefixUnaryExpressionSyntax node)
+    {
+        switch (node.OperatorToken.Text) {
+            case "!":
+                print ("not ");
+                Visit(node.Operand);
+                break;
+            case "++":
+            case "--":
+                // GDScript does not have these
+                print("(");
+                Visit(node.Operand);
+                print(" {0}= 1)", node.OperatorToken.Text[0]);
+                break;
+            default:
+                print("{0}", node.OperatorToken.Text);
+                Visit(node.Operand);
+                break;
+        }
+    }
+
+    public override void VisitPostfixUnaryExpression(PostfixUnaryExpressionSyntax node)
+    {
+        // This would be incorrect if used as a subexpression. 
+        // However, such code should not be written anyway.
+        Visit(node.Operand);
+        print(" {0}= 1", node.OperatorToken.Text[0]);
+    }
+
+    public override void VisitCastExpression(CastExpressionSyntax node)
+    {
+        var type = node.Type as PredefinedTypeSyntax;
+        if (type != null) {
+            var type_name = type.Keyword.Text;
+            switch (type_name) {
+                case "string":
+                    print("str");
+                    break;
+                default:
+                    print("{0}", type_name);
+                    break;
+            }
+        } else {
+            Visit(node.Type);
+        }
+        print("(");
+        Visit(node.Expression);
+        print(")");
+    }
 
     public override void VisitTrivia(SyntaxTrivia trivia)
     {

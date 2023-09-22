@@ -1,5 +1,6 @@
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 class DebugWalker : CSharpSyntaxWalker 
 {
@@ -42,8 +43,16 @@ class DebugWalker : CSharpSyntaxWalker
 
     public override void DefaultVisit(SyntaxNode node)
     {
-        // If this is called, that means the code contains nodes that are not supported by the converter.
-        printline("«{0}»", node.GetType().Name);
+        switch(node) {
+            case MethodDeclarationSyntax  s: printline("«{0} {1}»", node.GetType().Name, s.Identifier.Text); break;
+            case ClassDeclarationSyntax   s: printline("«{0} {1}»", node.GetType().Name, s.Identifier.Text); break;
+            case GenericNameSyntax        s: printline("«{0} {1}»", node.GetType().Name, s.Identifier.Text); break;
+            case IdentifierNameSyntax     s: printline("«{0} {1}»", node.GetType().Name, s.Identifier.Text); break;
+            case ParameterSyntax          s: printline("«{0} {1}»", node.GetType().Name, s.Identifier.Text); break;
+            case SimpleNameSyntax         s: printline("«{0} {1}»", node.GetType().Name, s.Identifier.Text); break;
+            case VariableDeclaratorSyntax s: printline("«{0} {1}»", node.GetType().Name, s.Identifier.Text); break;
+            default: printline("«{0}»", node.GetType().Name); break;
+        }
         indent++;
         base.DefaultVisit(node);
         indent--;
