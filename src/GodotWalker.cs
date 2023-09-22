@@ -260,6 +260,46 @@ class GodotWalker : CSharpSyntaxWalker
         print(node.Identifier.Text);
     }
 
+    public override void VisitExpressionStatement(ExpressionStatementSyntax node)
+    {
+        Visit(node.Expression);
+        newline();
+    }
+
+    public override void VisitAssignmentExpression(AssignmentExpressionSyntax node)
+    {
+        Visit(node.Left);
+        print(" = ");
+        Visit(node.Right);
+    }
+
+    public override void VisitMemberAccessExpression(MemberAccessExpressionSyntax node)
+    {
+        // TODO: This might need some translation table (e.g. Vector3.zero -> Vector3.ZERO);
+        Visit(node.Expression);
+        print(".");
+        Visit(node.Name);
+    }
+
+    public override void VisitInvocationExpression(InvocationExpressionSyntax node)
+    {
+        // Method
+        Visit(node.Expression);
+
+        // Arguments
+        print("(");
+        var needs_separator = false;
+        foreach (var arg in node.ArgumentList.Arguments) {
+            if (needs_separator) Console.Write(", ");
+            if (arg.NameColon != null) throw new NotSupportedException("Godot does not support named arguments");
+            Visit(arg.Expression);
+            needs_separator = true;
+        }
+        print(")");
+    }
+
+
+
     public override void VisitTrivia(SyntaxTrivia trivia)
     {
         switch (trivia.Kind()) {
