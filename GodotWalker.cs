@@ -36,7 +36,9 @@ class GodotWalker : CSharpSyntaxWalker
     {
         // If this is called, that means the code contains nodes that are not supported by the converter.
         print("«{0}»", node.GetType().Name);
-        newline();
+        if (node.ToFullString().Contains("\n")) {
+            newline();
+        }
         // base.DefaultVisit(node);
     }
 
@@ -101,7 +103,7 @@ class GodotWalker : CSharpSyntaxWalker
 
     public override void VisitLiteralExpression(LiteralExpressionSyntax node)
     {
-        var text = node.ToFullString();
+        var text = node.Token.Text;
         if (text.EndsWith('f') && !text.Contains('.')) text = text.Replace("f",".0");
         print(text);
     }
@@ -122,7 +124,6 @@ class GodotWalker : CSharpSyntaxWalker
             needs_separator = true;
         }
         print("){0}:", return_type);
-        newline();
         indent++;
         Visit(node.Body);
         indent--;
@@ -139,6 +140,95 @@ class GodotWalker : CSharpSyntaxWalker
         }
     }
 
+    public override void VisitBlock(BlockSyntax node)
+    {
+        if (node.Statements.Count > 0) {
+            VisitChildren<StatementSyntax>(node);
+        } else {
+            throw new NotSupportedException("Blocks should at the very least contain a EmptyStatement.");
+        }
+    }
+
+    public override void VisitEmptyStatement(EmptyStatementSyntax node)
+    {
+        print("pass");
+        newline();
+    }
+
+    public override void VisitIfStatement(IfStatementSyntax node)
+    {
+        print("if ");
+        Visit(node.Condition);
+        print(":");
+        newline();
+        indent++;
+        Visit(node.Statement);
+        indent--;
+        if (node.Else != null) {
+            print("else:");
+            newline();
+            indent++;
+            Visit(node.Else);
+            indent--;
+        }
+    }
+
+    public override void VisitForStatement(ForStatementSyntax node)
+    {
+        // This is a bit tricky as godot does not have a for(;;) syntax.
+        // We might be able to recognize simple `for(int i=0; i<10; i++)` loops though and replace these with `for i in range(0,10)`.
+        // Otherwise translate to a while loop.
+        print("# for");
+        newline();
+        if (node.Declaration != null) {
+            Visit(node.Declaration);
+            newline();
+        }
+        foreach (var init in node.Initializers) {
+            Visit(init);
+            newline();
+        }
+
+        print("while ");
+        Visit(node.Condition);
+        print(":");
+        newline();
+
+        indent++;
+        if (node.Statement is EmptyStatementSyntax) {
+            print("# empty for-body");
+            newline();
+        } else {
+            Visit(node.Statement);
+        }
+
+        print("# increment");
+        newline();
+        foreach (var incr in node.Incrementors) {
+            Visit(incr);
+            newline();
+        }
+        indent--;
+    }
+
+    public override void VisitWhileStatement(WhileStatementSyntax node)
+    {
+        print("while ");
+        Visit(node.Condition);
+        print(":");
+        newline();
+        indent++;
+        Visit(node.Statement);
+        indent--;
+    }
+
+    public override void VisitReturnStatement(ReturnStatementSyntax node)
+    {
+        print("return ");
+        Visit(node.Expression);
+        newline();
+    }
+
     public override void VisitTrivia(SyntaxTrivia trivia)
     {
         switch (trivia.Kind()) {
@@ -151,11 +241,13 @@ class GodotWalker : CSharpSyntaxWalker
             case SyntaxKind.MultiLineCommentTrivia:
             case SyntaxKind.MultiLineDocumentationCommentTrivia: {
                 string text = trivia.ToFullString();
+                var needs_newline = false;
                 foreach (var line in text.Split('\n')) {
+                    if (needs_newline) newline();
                     var foo = line.Trim(' ','\t','/', '*');
                     if (consecutive_line_ends == 0) Console.Write(' ');
                     print("# {0}", foo);
-                    newline();
+                    needs_newline = true;
                 }
                 break;
             }
