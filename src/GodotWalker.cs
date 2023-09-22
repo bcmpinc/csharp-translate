@@ -9,6 +9,12 @@ class GodotWalker : CSharpSyntaxWalker
     int indent = 0;
     int consecutive_line_ends = 2;
 
+    Dictionary<string,string> method_dictionary = new Dictionary<string, string>(){
+        // LLM's can confidentely mix these up.
+        ["Awake"] = "_init",
+        ["Start"] = "_ready",
+    };
+
     public GodotWalker(SyntaxTree tree) : base(SyntaxWalkerDepth.Trivia)
     {
         print("# Converted from '{0}' using csharp-translate", tree.FilePath);
@@ -69,7 +75,7 @@ class GodotWalker : CSharpSyntaxWalker
         print("# class_name {0}", node.Identifier);
         newline();
         if (node.BaseList != null) {
-            print("# extends: {0}", node.BaseList);
+            print("# extends {0}", node.BaseList);
             newline();
         }
         VisitChildren<MemberDeclarationSyntax>(node);
@@ -88,7 +94,7 @@ class GodotWalker : CSharpSyntaxWalker
         typewalker.Visit(node.Type);
         string current_type = typewalker.GetTypeName();
         foreach (var variable in node.Variables) {
-            print("var {0} : {1}", variable.Identifier, current_type);
+            print("var {0}: {1}", variable.Identifier, current_type);
             if (variable.Initializer != null) {
                 Visit(variable.Initializer);
             }
@@ -110,20 +116,31 @@ class GodotWalker : CSharpSyntaxWalker
 
     public override void VisitMethodDeclaration(MethodDeclarationSyntax node)
     {
-        string return_type = "";
-        if (node.ReturnType.ToString() != "void") {
-            var typewalker = new GodotTypeWalker();
-            typewalker.Visit(node.ReturnType);
-            return_type = " -> " + typewalker.GetTypeName();
+        // Method name
+        var method_name = node.Identifier.Text;
+        if (method_dictionary.ContainsKey(method_name)) {
+            method_name = method_dictionary[method_name];
         }
-        print("func {0}(", node.Identifier);
+        print("func {0}(", method_name);
+
+        // Parameter list
         var needs_separator = false;
         foreach (var param in node.ParameterList.Parameters) {
             if (needs_separator) Console.Write(", ");
             Visit(param);
             needs_separator = true;
         }
-        print("){0}:", return_type);
+        print(")");
+
+        // Return type
+        if (node.ReturnType.ToString() != "void") {
+            var typewalker = new GodotTypeWalker();
+            typewalker.Visit(node.ReturnType);
+            print(" -> {0}", typewalker.GetTypeName());
+        }
+        print(":");
+
+        // Method body
         indent++;
         Visit(node.Body);
         indent--;
