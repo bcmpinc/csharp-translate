@@ -229,6 +229,20 @@ class GodotWalker : CSharpSyntaxWalker
         newline();
     }
 
+    public override void VisitLocalDeclarationStatement(LocalDeclarationStatementSyntax node)
+    {
+        if (node.IsConst) {
+            // Godot does not support const variables.
+        }
+        Visit(node.Declaration);
+        newline();
+    }
+
+    public override void VisitIdentifierName(IdentifierNameSyntax node)
+    {
+        print(node.Identifier.Text);
+    }
+
     public override void VisitTrivia(SyntaxTrivia trivia)
     {
         switch (trivia.Kind()) {
