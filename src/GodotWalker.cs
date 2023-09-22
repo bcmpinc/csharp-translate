@@ -9,11 +9,7 @@ class GodotWalker : CSharpSyntaxWalker
     int indent = 0;
     int consecutive_line_ends = 2;
 
-    Dictionary<string,string> method_dictionary = new Dictionary<string, string>(){
-        // LLM's can confidentely mix these up.
-        ["Awake"] = "_init",
-        ["Start"] = "_ready",
-    };
+    bool skip_arguments = false;
 
     public GodotWalker(SyntaxTree tree) : base(SyntaxWalkerDepth.Trivia)
     {
@@ -118,10 +114,14 @@ class GodotWalker : CSharpSyntaxWalker
     {
         // Method name
         var method_name = node.Identifier.Text;
-        if (method_dictionary.ContainsKey(method_name)) {
-            method_name = method_dictionary[method_name];
+        print("func ");
+        switch (method_name) {
+            // LLM's can confidentely mix these up.
+            case "Awake": print("_init"); break;
+            case "Start": print("_ready"); break;
+            default: print("{0}", method_name); break;
         }
-        print("func {0}(", method_name);
+        print("(");
 
         // Parameter list
         var needs_separator = false;
@@ -287,15 +287,33 @@ class GodotWalker : CSharpSyntaxWalker
         Visit(node.Expression);
 
         // Arguments
-        print("(");
-        var needs_separator = false;
-        foreach (var arg in node.ArgumentList.Arguments) {
-            if (needs_separator) Console.Write(", ");
-            if (arg.NameColon != null) throw new NotSupportedException("Godot does not support named arguments");
-            Visit(arg.Expression);
-            needs_separator = true;
+        if (skip_arguments) {
+            skip_arguments = false;
+        } else {
+            print("(");
+            var needs_separator = false;
+            foreach (var arg in node.ArgumentList.Arguments) {
+                if (needs_separator) Console.Write(", ");
+                if (arg.NameColon != null) throw new NotSupportedException("Godot does not support named arguments");
+                Visit(arg.Expression);
+                needs_separator = true;
+            }
+            print(")");
         }
-        print(")");
+    }
+
+    public override void VisitGenericName(GenericNameSyntax node)
+    {
+        switch (node.Identifier.Text) {
+            case "GetComponent":
+                print("get_node(\"{0}\")", node.TypeArgumentList.Arguments[0].ToFullString());
+                skip_arguments = true;
+                break;
+            default:
+                print("{0}", node.Identifier);
+                break;
+
+        }
     }
 
 
